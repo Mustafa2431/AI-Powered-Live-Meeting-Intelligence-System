@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Overlay
   toggleOverlay: () => ipcRenderer.send('toggle-overlay'),
+  setOverlayInteractive: (interactive) => ipcRenderer.send('overlay-interactive', interactive),
 
   // Screenshot
   captureScreenshot: () => ipcRenderer.invoke('capture-screenshot'),

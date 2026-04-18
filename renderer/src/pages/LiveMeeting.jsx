@@ -23,6 +23,28 @@ export default function LiveMeeting({ recording, transcript, tasks, summary, sta
 
   const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
 
+  const testAudio = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('Audio access granted:', stream);
+      alert('🎤 Audio access granted!');
+    } catch (err) {
+      console.error('Audio access error:', err);
+      alert('❌ Audio access denied: ' + err.message);
+    }
+  }
+
+  const testScreen = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      console.log('Screen access granted:', stream);
+      alert('🖥️ Screen access granted!');
+    } catch (err) {
+      console.error('Screen access error:', err);
+      alert('❌ Screen access denied: ' + err.message);
+    }
+  }
+
   return (
     <div style={{ padding:'32px 40px', height:'100%', display:'flex', flexDirection:'column', gap:20 }}>
       {/* Header */}
@@ -43,6 +65,17 @@ export default function LiveMeeting({ recording, transcript, tasks, summary, sta
               <span style={{ fontSize:16, fontWeight:700, color:'var(--on-surface)', letterSpacing:'0.05em' }}>{fmt(elapsed)}</span>
             </div>
           )}
+          
+          <button onClick={testAudio} title="Test Mic Access"
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, background:'rgba(255,255,255,0.1)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer' }}>
+            <span className="material-symbols-outlined" style={{ fontSize:18 }}>mic_none</span>
+          </button>
+          
+          <button onClick={testScreen} title="Test Screen Access"
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, background:'rgba(255,255,255,0.1)', border:'none', borderRadius:'50%', color:'#fff', cursor:'pointer' }}>
+            <span className="material-symbols-outlined" style={{ fontSize:18 }}>screen_share</span>
+          </button>
+
           <button onClick={recording ? stopRecording : () => startRecording('Live Meeting')}
             style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 20px',
               background: recording ? 'linear-gradient(135deg,#a70138,#d73357)' : 'linear-gradient(135deg,#4f46e5,#7c3aed)',

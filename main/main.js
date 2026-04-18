@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, session } = require('electron');
 const path    = require('path');
 const fs      = require('fs');
 const { spawn } = require('child_process');
 const axios   = require('axios');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+// IMPORTANT: Treat the Vite dev server as a secure origin so MediaDevices API works!
+app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', 'http://localhost:5173');
 
 let mainWindow    = null;
 let overlayWindow = null;
@@ -20,8 +23,13 @@ function startBackend() {
   const serverPath = path.join(__dirname, '../backend/server.js');
   backendProc = spawn('node', [serverPath], {
     env: { ...process.env },
-    stdio: 'inherit',
+    stdio: 'pipe',
+    windowsHide: true,
   });
+  
+  // Forward stdout/stderr to main process console quietly
+  backendProc.stdout.on('data', (d) => console.log(`[Backend] ${d.toString().trim()}`));
+  backendProc.stderr.on('data', (d) => console.error(`[Backend] ${d.toString().trim()}`));
   backendProc.on('error', (e) => console.error('[Backend] spawn error:', e));
   backendProc.on('exit', (code) => console.log('[Backend] exited:', code));
 }
@@ -89,19 +97,21 @@ function createMainWindow() {
 
 // ── Overlay Window ────────────────────────────────────────────────────────────
 function createOverlayWindow() {
-  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   overlayWindow = new BrowserWindow({
-    width: 340,
-    height: 680,
-    x: width - 360,
-    y: 40,
+    width,
+    height,
+    x: 0,
+    y: 0,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    resizable: true,
+    resizable: false,
     skipTaskbar: true,
+    focusable: false,
     hasShadow: false,
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -109,8 +119,13 @@ function createOverlayWindow() {
     },
   });
 
+  // Enable click-through by default so the rest of the OS is clickable!
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+
   if (isDev()) {
-    mainWindow.loadURL(`${RENDERER_DEV}/overlay`);
+    // CRITICAL FIX: load in overlayWindow, not mainWindow!
+    overlayWindow.loadURL(`${RENDERER_DEV}/overlay.html`);
   } else {
     overlayWindow.loadFile(path.join(__dirname, '../renderer/dist/overlay.html'));
   }
@@ -122,6 +137,12 @@ function createOverlayWindow() {
 ipcMain.on('toggle-overlay', () => {
   if (!overlayWindow) { createOverlayWindow(); return; }
   overlayWindow.isVisible() ? overlayWindow.hide() : overlayWindow.show();
+});
+
+ipcMain.on('overlay-interactive', (_, interactive) => {
+  if (overlayWindow) {
+    overlayWindow.setIgnoreMouseEvents(!interactive, { forward: true });
+  }
 });
 
 ipcMain.on('start-recording', async (_e, payload) => {
@@ -169,6 +190,15 @@ ipcMain.on('overlay-drag', (_e, { dx, dy }) => {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  // Enforce secure permissions for React Media Devices (mic and screen)
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'display-capture') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   startBackend();
   createMainWindow();
   await subscribeToBackend();

@@ -9,9 +9,8 @@ export default function Overlay() {
   const [recording, setRecording]   = useState(false)
   const [collapsed, setCollapsed]   = useState(false)
   const [dragging, setDragging]     = useState(false)
+  const [pos, setPos]               = useState({ x: window.innerWidth - 360, y: 40 })
   const dragStart = useRef(null)
-
-  // SSE
   useEffect(() => {
     const es = new EventSource(`${API}/events`)
     es.addEventListener('transcript', e => {
@@ -33,18 +32,18 @@ export default function Overlay() {
     window.electronAPI.onRecordingStatus(d => setRecording(d.recording))
   }, [])
 
-  // Drag support
+  // Drag support (moves the div within the fullscreen transparent window)
   const onMouseDown = (e) => {
     setDragging(true)
-    dragStart.current = { x: e.screenX, y: e.screenY }
+    dragStart.current = { clientX: e.clientX, clientY: e.clientY }
   }
   useEffect(() => {
     if (!dragging) return
     const onMove = (e) => {
-      const dx = e.screenX - dragStart.current.x
-      const dy = e.screenY - dragStart.current.y
-      dragStart.current = { x: e.screenX, y: e.screenY }
-      window.electronAPI?.overlayDrag(dx, dy)
+      const dx = e.clientX - dragStart.current.clientX
+      const dy = e.clientY - dragStart.current.clientY
+      dragStart.current = { clientX: e.clientX, clientY: e.clientY }
+      setPos(prev => ({ x: prev.x + dx, y: prev.y + dy }))
     }
     const onUp = () => setDragging(false)
     window.addEventListener('mousemove', onMove)
@@ -65,12 +64,16 @@ export default function Overlay() {
   }
 
   return (
-    <div style={{ position: 'fixed', top: 0, right: 0, padding: 16, zIndex: 9999 }}>
-      <div style={panelStyle}>
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative' }}>
+      <div 
+        style={{ ...panelStyle, position: 'absolute', left: pos.x, top: pos.y, zIndex: 9999 }}
+        onMouseEnter={() => window.electronAPI?.setOverlayInteractive(true)}
+        onMouseLeave={() => window.electronAPI?.setOverlayInteractive(false)}
+      >
         {/* Drag handle / header */}
         <div onMouseDown={onMouseDown} style={{
           display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'14px 16px', cursor:'grab', borderBottom:'1px solid rgba(72,71,74,0.25)',
+          padding:'14px 16px', cursor: dragging ? 'grabbing' : 'grab', borderBottom:'1px solid rgba(72,71,74,0.25)',
           background:'rgba(255,255,255,0.03)',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
