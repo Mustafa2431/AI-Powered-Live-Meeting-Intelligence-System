@@ -4,7 +4,7 @@
  * Emits events consumed by the Express backend which forwards to Electron IPC.
  */
 const { EventEmitter } = require('events');
-const { transcribeChunk } = require('./transcriber');
+const { transcribeChunk, resetTranscriberState } = require('./transcriber');
 const { extractTasks }    = require('./taskDetector');
 const { generateSummary } = require('./summarizer');
 
@@ -27,8 +27,17 @@ class MeetingPipeline extends EventEmitter {
     this.queue = [];
     this.isProcessing = false;
 
-    // Rolling summary every 20 seconds
-    this._summaryTimer = setInterval(() => this._triggerSummary(), 20000);
+    // Reset Whisper transcriber context for new meeting
+    resetTranscriberState();
+
+    // Rolling summary every 30 seconds
+    this._summaryTimer = setInterval(async () => {
+      if (!this.fullTranscript.trim()) return;
+      const summary = await generateSummary(this.fullTranscript);
+      if (summary) {
+        this.emit('summary', { text: summary, timestamp: new Date().toISOString() });
+      }
+    }, 30000);
 
     console.log('[Pipeline] started');
   }
@@ -102,7 +111,7 @@ class MeetingPipeline extends EventEmitter {
   }
 
   /**
-   * Legacy: Handles raw audio chunks (Whisper flow)
+   * Primary path: Handles preprocessed audio chunks from Python → Whisper API
    */
   handleAudioChunk(chunk) {
     if (!this.isRunning) return;
@@ -144,6 +153,9 @@ class MeetingPipeline extends EventEmitter {
     }
     this.isRunning = false;
     clearInterval(this._summaryTimer);
+
+    // Reset transcriber state
+    resetTranscriberState();
     
     // Clear queue on stop
     this.queue = [];
