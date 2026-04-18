@@ -34,6 +34,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Overlay drag
   overlayDrag: (dx, dy) => ipcRenderer.send('overlay-drag', { dx, dy }),
 
+  // Close/hide overlay
+  hideOverlay: () => ipcRenderer.send('hide-overlay'),
+
+  // Region capture
+  startRegionCapture: (region) => ipcRenderer.send('start-region-capture', region),
+  stopRegionCapture: () => ipcRenderer.send('stop-region-capture'),
+  onRegionScreenshot: (cb) => {
+    ipcRenderer.on('region-screenshot', (_e, data) => cb(data));
+    return () => ipcRenderer.removeAllListeners('region-screenshot');
+  },
+
   // Backend HTTP helpers (called from renderer via preload to avoid CORS)
   sendToBackend: (path, body) =>
     ipcRenderer.invoke('backend-request', { path, body }),
