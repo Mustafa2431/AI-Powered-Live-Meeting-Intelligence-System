@@ -33,7 +33,7 @@ export default function App() {
           <Route path="/"            element={<Dashboard   {...meeting} />} />
           <Route path="/live"        element={<LiveMeeting {...meeting} />} />
           <Route path="/tasks"       element={<Tasks       tasks={meeting.tasks} />} />
-          <Route path="/summary"     element={<MeetingSummary meetings={meeting.meetings} />} />
+          <Route path="/summary"     element={<MeetingSummary meetings={meeting.meetings} openQuestions={meeting.openQuestions} followUps={meeting.followUps} />} />
           <Route path="/settings"    element={<Settings />} />
           <Route path="*"            element={<Navigate to="/" replace />} />
         </Routes>

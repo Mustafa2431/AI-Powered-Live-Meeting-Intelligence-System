@@ -23,6 +23,8 @@ const { connectDB }    = require('../db/connect');
 const { Meeting, Task } = require('../db/models');
 const pipeline         = require('../ai/pipeline');
 const { analyzeImage } = require('../ai/imageAnalyzer');
+const { removeFiller, extractTopics, extractDecisions, buildTimeline, buildHighlights, deduplicateItems } = require('../ai/dataExtractor');
+const { generateStructuredSummary } = require('../ai/summarizer');
 
 const app  = express();
 const PORT = process.env.BACKEND_PORT || 3001;
@@ -88,6 +90,22 @@ pipeline.on('task', async (data) => {
   }
 });
 pipeline.on('summary', (data) => broadcast('summary', data));
+pipeline.on('open-question', async (data) => {
+  broadcast('open-question', data);
+  if (activeMeetingId) {
+    try {
+      await Meeting.findByIdAndUpdate(activeMeetingId, { $push: { openQuestions: data } });
+    } catch (_) {}
+  }
+});
+pipeline.on('follow-up', async (data) => {
+  broadcast('follow-up', data);
+  if (activeMeetingId) {
+    try {
+      await Meeting.findByIdAndUpdate(activeMeetingId, { $push: { followUps: data } });
+    } catch (_) {}
+  }
+});
 pipeline.on('error', (err) => {
   console.error('[Pipeline Error]:', err.message);
   broadcast('error', { message: err.message });
@@ -130,7 +148,6 @@ app.post('/recording/stop', async (req, res) => {
     try {
       await Meeting.findByIdAndUpdate(activeMeetingId, {
         transcript: result.transcript,
-        summary:    result.summary,
         endedAt:    new Date(),
         status:     'completed',
       });
@@ -145,12 +162,77 @@ app.post('/recording/stop', async (req, res) => {
   activeMeetingId = null;
 });
 
+app.post('/api/summary/:id', async (req, res) => {
+  try {
+    const { force } = req.body || {};
+    const meeting = await Meeting.findById(req.params.id).populate('tasks');
+    
+    if (!meeting) return res.status(404).json({ error: 'not found' });
+
+    // Check if summary is already cached and we are not forcing regeneration
+    if (!force && meeting.summary?.generatedAt) {
+      return res.json({ summary: meeting.summary, ok: true });
+    }
+
+    const cleanedTranscript = removeFiller(meeting.transcript);
+    
+    // Extract and deduplicate insights
+    let topics = deduplicateItems(extractTopics(cleanedTranscript));
+    let decisions = deduplicateItems(extractDecisions(cleanedTranscript));
+    
+    // Fallback if no decisions
+    if (!decisions.length) decisions = ["No major decisions recorded"];
+
+    const transcriptLines = cleanedTranscript.split(/(?<=[.?!])\s+/).map((t, idx) => ({ 
+        text: t, 
+        timestamp: new Date(meeting.startedAt.getTime() + idx * 1000 * 10).toISOString() // Fake timestamp since plain transcript doesn't have it natively, but this is a placeholder. Real timelines should use timestamps if available.
+    }));
+    
+    // Let's rely upon the actual pipeline events for timeline if available, but for now we map to fake intervals
+    const timeline = buildTimeline(transcriptLines);
+
+    // Build Highlights
+    // Assuming image labels happen on the screenshots array but it only contains paths? 
+    // Usually images are just paths, but since we map to buildHighlights, we use an empty array if labels aren't stored natively on meeting record.
+    const highlights = []; // We aren't storing labels directly on screenshots yet.
+
+    const reqData = {
+      transcript: cleanedTranscript,
+      tasks: meeting.tasks.map(t => ({ task: t.task, assignee: t.assignee })),
+      decisions,
+      topics,
+      highlights,
+      openQuestions: meeting.openQuestions || [],
+      followUps: meeting.followUps || [],
+      timeline
+    };
+
+    const structuredSum = await generateStructuredSummary(reqData);
+
+    if (!structuredSum) {
+        throw new Error("Summary generation failed.");
+    }
+
+    // Embed task snapshot and generation date
+    structuredSum.tasks = reqData.tasks;
+    structuredSum.generatedAt = new Date();
+
+    // Save back to DB
+    const updated = await Meeting.findByIdAndUpdate(req.params.id, { summary: structuredSum }, { new: true });
+    res.json({ summary: updated.summary, ok: true });
+  } catch (err) {
+    console.error('[API] Summary generation error:', err.message);
+    res.status(500).json({ error: 'Summary failed' });
+  }
+});
+
 // ── Meetings ──────────────────────────────────────────────────────────────────
 app.get('/meetings', async (_req, res) => {
   try {
-    const meetings = await Meeting.find().sort({ startedAt: -1 }).limit(20);
+    const meetings = await Meeting.find().populate('tasks').sort({ startedAt: -1 }).limit(20);
     res.json(meetings);
-  } catch (_) {
+  } catch (err) {
+    console.error('[Meetings GET] Error:', err);
     res.json([]);
   }
 });

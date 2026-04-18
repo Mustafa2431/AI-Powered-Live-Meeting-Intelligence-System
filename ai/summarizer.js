@@ -54,4 +54,112 @@ async function generateSummary(transcriptText, imageContexts = []) {
   }
 }
 
-module.exports = { generateSummary };
+/**
+ * Generates a structured JSON summary on demand.
+ */
+async function generateStructuredSummary(data) {
+  const { transcript = '', topics = [], tasks = [], decisions = [], highlights = [], openQuestions = [], timeline = [], followUps = [] } = data;
+
+  const userContent = `DATA:
+Transcript:
+${transcript}
+
+Topics:
+${topics.join(', ') || 'None'}
+
+Tasks:
+${JSON.stringify(tasks)}
+
+Decisions:
+${decisions.map(d => `- ${d}`).join('\n') || 'None'}
+
+Follow-ups / Scheduled Meetings:
+${JSON.stringify(followUps)}
+
+Open Questions:
+${JSON.stringify(openQuestions)}
+
+Visual Highlights:
+${highlights.map(h => `- ${h}`).join('\n') || 'None'}
+
+Timeline:
+${JSON.stringify(timeline)}
+`;
+
+  try {
+    const response = await groq.chat.completions.create({
+      model: SUMMARY_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a professional meeting analyst.
+
+Analyze the complete meeting data and generate a structured report.
+
+STRICT RULES:
+* Include ALL important information from the data
+* Do NOT miss tasks, decisions, or follow-ups
+* Do NOT repeat items
+* Keep sentences concise and clear
+* Use bullet points where applicable
+
+OUTPUT FORMAT (STRICT JSON ONLY, NO EXTRA TEXT):
+{
+  "overview": "A short 2-3 line summary of the meeting",
+  "topics": ["..."],
+  "decisions": ["..."],
+  "tasks": [
+    { "task": "...", "assignee": "..." }
+  ],
+  "followUps": ["..."],
+  "openQuestions": ["..."],
+  "highlights": ["..."],
+  "timeline": [
+    { "range": "...", "summary": "..." }
+  ]
+}
+
+IMPORTANT:
+* overview MUST be a concise AI-generated summary (like OpenAI summary)
+* tasks MUST clearly mention assignee
+* followUps MUST include any future meetings or scheduled discussions
+* If a section has no data, return an empty array`,
+        },
+        { role: 'user', content: userContent },
+      ],
+      temperature: 0.2,
+      max_tokens: 1200,
+    });
+
+    const raw = response.choices[0]?.message?.content || '';
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) {
+        return {
+          overview: "Summary not available",
+          topics: [],
+          decisions: [],
+          tasks: [],
+          followUps: [],
+          openQuestions: [],
+          highlights: [],
+          timeline: []
+        };
+    }
+    
+    return JSON.parse(match[0]);
+  } catch (err) {
+    console.error('[Summarizer] Structured JSON generation error:', err.message);
+    return {
+      overview: "Summary not available",
+      topics: [],
+      decisions: [],
+      tasks: [],
+      followUps: [],
+      openQuestions: [],
+      highlights: [],
+      timeline: []
+    };
+  }
+}
+
+module.exports = { generateSummary, generateStructuredSummary };

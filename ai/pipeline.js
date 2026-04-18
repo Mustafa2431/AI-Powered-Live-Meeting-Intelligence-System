@@ -5,29 +5,34 @@
  */
 const { EventEmitter } = require('events');
 const { transcribeChunk, resetTranscriberState } = require('./transcriber');
-const { extractTasks, normalizeTask, areSimilar } = require('./taskDetector');
-const { generateSummary } = require('./summarizer');
+const { extractTasks, normalizeTask, areSimilar }  = require('./taskDetector');
+const { generateSummary }                          = require('./summarizer');
+const { detectOpenQuestion, detectFollowUp, isSimilarInsight } = require('./insightDetector');
 
 class MeetingPipeline extends EventEmitter {
   constructor() {
     super();
     this.fullTranscript = '';
-    this.imageContexts = []; // Rolling buffer of screen descriptions (last 5)
-    this.seenTasks     = new Set(); // Normalized keys of already-emitted tasks
-    this.isRunning = false;
-    this._summaryTimer = null;
-    this.queue = [];
-    this.isProcessing = false;
+    this.imageContexts  = [];
+    this.seenTasks      = new Set();
+    this.openQuestions  = [];
+    this.followUps      = [];
+    this.isRunning      = false;
+    this._summaryTimer  = null;
+    this.queue          = [];
+    this.isProcessing   = false;
   }
 
   start() {
     if (this.isRunning) return;
-    this.isRunning = true;
+    this.isRunning     = true;
     this.fullTranscript = '';
-    this.imageContexts = [];
-    this.seenTasks     = new Set();
-    this.queue = [];
-    this.isProcessing = false;
+    this.imageContexts  = [];
+    this.seenTasks      = new Set();
+    this.openQuestions  = [];
+    this.followUps      = [];
+    this.queue          = [];
+    this.isProcessing   = false;
 
     // Reset Whisper transcriber context for new meeting
     resetTranscriberState();
@@ -101,13 +106,32 @@ class MeetingPipeline extends EventEmitter {
 
       const tasks = extractTasks(trimmedSentence);
 
+      // ── Open question detection ──
+      const oq = detectOpenQuestion(trimmedSentence);
+      if (oq) {
+        const isDupQ = this.openQuestions.some(q => isSimilarInsight(q.question, oq.question));
+        if (!isDupQ) {
+          this.openQuestions.push(oq);
+          this.emit('open-question', oq);
+        }
+      }
+
+      // ── Follow-up detection ──
+      const fu = detectFollowUp(trimmedSentence);
+      if (fu) {
+        const isDupF = this.followUps.some(f => isSimilarInsight(f.context, fu.context));
+        if (!isDupF) {
+          this.followUps.push(fu);
+          this.emit('follow-up', fu);
+        }
+      }
+
       this.emit('transcript', {
         text: trimmedSentence,
         timestamp: new Date().toISOString(),
       });
 
       for (const task of tasks) {
-        // Pipeline-level deduplication: skip if we've seen a similar task before
         const key = task.normalized || normalizeTask(task.task);
         const isDup = [...this.seenTasks].some(seen => areSimilar(seen, key));
         if (isDup) {
@@ -115,8 +139,6 @@ class MeetingPipeline extends EventEmitter {
           continue;
         }
         this.seenTasks.add(key);
-
-        // Strip the internal 'normalized' field before emitting
         const { normalized: _n, ...cleanTask } = task;
         this.emit('task', cleanTask);
       }
@@ -169,7 +191,9 @@ class MeetingPipeline extends EventEmitter {
 
     // Reset transcriber state
     resetTranscriberState();
-    this.seenTasks = new Set();
+    this.seenTasks     = new Set();
+    this.openQuestions = [];
+    this.followUps     = [];
     
     // Clear queue on stop
     this.queue = [];

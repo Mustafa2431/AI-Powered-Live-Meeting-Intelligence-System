@@ -12,6 +12,8 @@ export default function useMeeting() {
   const [transcript, setTranscript]   = useState([])   // [{text, timestamp}]
   const [tasks, setTasks]             = useState([])    // [{task,assignee,confidence,timestamp}]
   const [summary, setSummary]         = useState('')
+  const [openQuestions, setOpenQuestions] = useState([]) // [{question, timestamp}]
+  const [followUps, setFollowUps]         = useState([]) // [{suggestion, context, timestamp}]
   const [meetings, setMeetings]       = useState([])
   const esRef = useRef(null)
 
@@ -35,6 +37,14 @@ export default function useMeeting() {
     es.addEventListener('status', (e) => {
       const data = JSON.parse(e.data)
       setRecording(data.recording)
+    })
+    es.addEventListener('open-question', (e) => {
+      const data = JSON.parse(e.data)
+      setOpenQuestions(prev => [...prev, data])
+    })
+    es.addEventListener('follow-up', (e) => {
+      const data = JSON.parse(e.data)
+      setFollowUps(prev => [...prev, data])
     })
     es.addEventListener('error', (e) => {
       const data = JSON.parse(e.data)
@@ -79,10 +89,13 @@ export default function useMeeting() {
       setTranscript([])
       setTasks([])
       setSummary('')
+      setOpenQuestions([])
+      setFollowUps([])
+      loadMeetings()
     } catch (_) {}
     // Also notify Electron main
     window.electronAPI?.startRecording()
-  }, [])
+  }, [loadMeetings])
 
   const stopRecording = useCallback(async () => {
     try {
@@ -92,5 +105,5 @@ export default function useMeeting() {
     window.electronAPI?.stopRecording()
   }, [loadMeetings])
 
-  return { recording, transcript, tasks, summary, meetings, startRecording, stopRecording, loadMeetings }
+  return { recording, transcript, tasks, summary, openQuestions, followUps, meetings, startRecording, stopRecording, loadMeetings }
 }

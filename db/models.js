@@ -10,14 +10,26 @@ const TaskSchema = new mongoose.Schema({
 });
 
 const MeetingSchema = new mongoose.Schema({
-  title:       { type: String, default: 'Meeting' },
-  startedAt:   { type: Date, default: Date.now },
-  endedAt:     { type: Date },
-  transcript:  { type: String, default: '' },
-  summary:     { type: String, default: '' },
-  tasks:       [{ type: mongoose.Schema.Types.ObjectId, ref: 'Task' }],
-  screenshots: [{ type: String }], // file paths
-  status:      { type: String, enum: ['active', 'completed'], default: 'active' },
+  title:         { type: String, default: 'Meeting' },
+  startedAt:     { type: Date, default: Date.now },
+  endedAt:       { type: Date },
+  transcript:    { type: String, default: '' },
+  summary: {
+    overview:      { type: String, default: '' },
+    topics:        [String],
+    decisions:     [String],
+    tasks:         [{ task: String, assignee: String }],
+    followUps:     [String],
+    openQuestions: [String],
+    highlights:    [String],
+    timeline:      [{ range: String, summary: String }],
+    generatedAt:   Date,
+  },
+  tasks:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'Task' }],
+  screenshots:   [{ type: String }],
+  openQuestions: [{ question: String, timestamp: String }],
+  followUps:     [{ suggestion: String, context: String, timestamp: String }],
+  status:        { type: String, enum: ['active', 'completed'], default: 'active' },
 });
 
 const Meeting = mongoose.model('Meeting', MeetingSchema);
