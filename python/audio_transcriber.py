@@ -21,7 +21,7 @@ TRANSCRIPT_URL = "http://localhost:3001/transcript"
 # "large-v3" = best accuracy, needs GPU for real-time
 MODEL_SIZE = "base"
 
-# ── Chunking & VAD Configuration ──────────────────────────────────────────────
+# ── Chunking & VAD Configuration   ──────────────────────────────────────────────
 CHUNK_DURATION = 3           # seconds per chunk (shorter = lower latency)
 OVERLAP_DURATION = 0.5       # overlap between chunks (avoids cutting words)
 VAD_ENERGY_THRESHOLD = 0.005 # min RMS energy to count as speech
