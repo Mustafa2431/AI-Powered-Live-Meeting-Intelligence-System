@@ -5,7 +5,7 @@
  */
 const { EventEmitter } = require('events');
 const { transcribeChunk, resetTranscriberState } = require('./transcriber');
-const { extractTasks }    = require('./taskDetector');
+const { extractTasks, normalizeTask, areSimilar } = require('./taskDetector');
 const { generateSummary } = require('./summarizer');
 
 class MeetingPipeline extends EventEmitter {
@@ -13,6 +13,7 @@ class MeetingPipeline extends EventEmitter {
     super();
     this.fullTranscript = '';
     this.imageContexts = []; // Rolling buffer of screen descriptions (last 5)
+    this.seenTasks     = new Set(); // Normalized keys of already-emitted tasks
     this.isRunning = false;
     this._summaryTimer = null;
     this.queue = [];
@@ -24,6 +25,7 @@ class MeetingPipeline extends EventEmitter {
     this.isRunning = true;
     this.fullTranscript = '';
     this.imageContexts = [];
+    this.seenTasks     = new Set();
     this.queue = [];
     this.isProcessing = false;
 
@@ -105,7 +107,18 @@ class MeetingPipeline extends EventEmitter {
       });
 
       for (const task of tasks) {
-        this.emit('task', task);
+        // Pipeline-level deduplication: skip if we've seen a similar task before
+        const key = task.normalized || normalizeTask(task.task);
+        const isDup = [...this.seenTasks].some(seen => areSimilar(seen, key));
+        if (isDup) {
+          console.log('[Pipeline] Skipping duplicate task:', task.task);
+          continue;
+        }
+        this.seenTasks.add(key);
+
+        // Strip the internal 'normalized' field before emitting
+        const { normalized: _n, ...cleanTask } = task;
+        this.emit('task', cleanTask);
       }
     }
   }
@@ -156,6 +169,7 @@ class MeetingPipeline extends EventEmitter {
 
     // Reset transcriber state
     resetTranscriberState();
+    this.seenTasks = new Set();
     
     // Clear queue on stop
     this.queue = [];
