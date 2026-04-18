@@ -188,6 +188,91 @@ ipcMain.on('overlay-drag', (_e, { dx, dy }) => {
   overlayWindow.setPosition(x + dx, y + dy);
 });
 
+ipcMain.on('hide-overlay', () => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+});
+
+// ── Region capture with visual change detection ───────────────────────────────
+let regionCaptureTimer = null;
+let previousBitmap = null;
+const CHANGE_THRESHOLD = 0.04; // 4% pixel difference triggers capture
+
+ipcMain.on('start-region-capture', (_e, region) => {
+  stopRegionCapture();
+  previousBitmap = null;
+  console.log('[RegionCapture] Monitoring region:', JSON.stringify(region));
+
+  regionCaptureTimer = setInterval(async () => {
+    try {
+      const display = screen.getPrimaryDisplay();
+      const { width, height } = display.size;
+
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width, height },
+      });
+      if (!sources.length) return;
+
+      const fullImage = sources[0].thumbnail;
+      const cropped = fullImage.crop({
+        x: Math.round(region.x),
+        y: Math.round(region.y),
+        width: Math.round(region.width),
+        height: Math.round(region.height),
+      });
+
+      const currentBitmap = cropped.toBitmap();
+
+      if (previousBitmap) {
+        const changeRatio = compareBitmaps(previousBitmap, currentBitmap);
+        if (changeRatio > CHANGE_THRESHOLD) {
+          const pngBuffer = cropped.toPNG();
+          const dir = path.join(app.getPath('userData'), 'screenshots');
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          const filePath = path.join(dir, `region_${Date.now()}.png`);
+          fs.writeFileSync(filePath, pngBuffer);
+
+          await axios.post(`${BACKEND_URL}/screenshots`, { filePath }).catch(() => {});
+          broadcast('region-screenshot', { filePath, timestamp: new Date().toISOString() });
+          console.log(`[RegionCapture] Change detected (${(changeRatio * 100).toFixed(1)}%), saved: ${filePath}`);
+        }
+      }
+      previousBitmap = currentBitmap;
+    } catch (err) {
+      console.error('[RegionCapture] error:', err.message);
+    }
+  }, 2000);
+});
+
+ipcMain.on('stop-region-capture', () => {
+  stopRegionCapture();
+});
+
+function stopRegionCapture() {
+  if (regionCaptureTimer) {
+    clearInterval(regionCaptureTimer);
+    regionCaptureTimer = null;
+    previousBitmap = null;
+    console.log('[RegionCapture] Stopped');
+  }
+}
+
+function compareBitmaps(buf1, buf2) {
+  if (buf1.length !== buf2.length) return 1;
+  const totalPixels = buf1.length / 4; // RGBA
+  const step = Math.max(1, Math.floor(totalPixels / 5000)) * 4;
+  let diffCount = 0;
+  let sampledPixels = 0;
+  for (let i = 0; i < buf1.length; i += step) {
+    sampledPixels++;
+    const dr = Math.abs(buf1[i] - buf2[i]);
+    const dg = Math.abs(buf1[i + 1] - buf2[i + 1]);
+    const db = Math.abs(buf1[i + 2] - buf2[i + 2]);
+    if (dr + dg + db > 30) diffCount++;
+  }
+  return diffCount / sampledPixels;
+}
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   // Enforce secure permissions for React Media Devices (mic and screen)
@@ -205,6 +290,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  stopRegionCapture();
   if (backendProc) backendProc.kill();
   if (process.platform !== 'darwin') app.quit();
 });
