@@ -8,10 +8,7 @@ const { Readable } = require('stream');
 const FormData = require('form-data');
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
-const MOCK_MODE = !process.env.OPENAI_API_KEY;
-if (MOCK_MODE) console.warn('[Transcriber] No OPENAI_API_KEY – running in MOCK mode');
-
-const openai = MOCK_MODE ? null : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 // Write WAV header + raw PCM so Whisper accepts it
 function buildWav(pcmBuffer, sampleRate = 16000, channels = 1, bitDepth = 16) {
@@ -33,25 +30,10 @@ function buildWav(pcmBuffer, sampleRate = 16000, channels = 1, bitDepth = 16) {
   return Buffer.concat([header, pcmBuffer]);
 }
 
-// Mock sentences for demo
-const MOCK_PHRASES = [
-  "Let's discuss the Q3 roadmap and finalize the deliverables.",
-  "John will handle the backend API integration by Friday.",
-  "I will prepare the design mockups before tomorrow's standup.",
-  "Assign the testing phase to the QA team.",
-  "We need to resolve the latency issues in the EU cluster.",
-  "Sarah will coordinate with the marketing team.",
-  "Action item: update the product documentation this week.",
-];
-let mockIdx = 0;
-
 async function transcribeChunk(audioBuffer) {
-  if (MOCK_MODE) {
-    // cycle through mock phrases for demo
-    await new Promise(r => setTimeout(r, 800)); // simulate latency
-    const text = MOCK_PHRASES[mockIdx % MOCK_PHRASES.length];
-    mockIdx++;
-    return text;
+  if (!openai) {
+    console.warn('[Transcriber] No API key - transcription disabled');
+    return '';
   }
 
   try {

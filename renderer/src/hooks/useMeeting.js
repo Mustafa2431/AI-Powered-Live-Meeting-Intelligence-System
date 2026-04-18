@@ -36,6 +36,10 @@ export default function useMeeting() {
       const data = JSON.parse(e.data)
       setRecording(data.recording)
     })
+    es.addEventListener('error', (e) => {
+      const data = JSON.parse(e.data)
+      alert('⚠️ Transcription Error: ' + data.message)
+    })
 
     return () => es.close()
   }, [])

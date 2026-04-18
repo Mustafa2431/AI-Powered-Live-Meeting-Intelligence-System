@@ -6,12 +6,11 @@
 const { OpenAI } = require('openai');
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
-const MOCK_MODE = !process.env.OPENAI_API_KEY;
-const openai = MOCK_MODE ? null : new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 async function generateSummary(transcriptText) {
-  if (MOCK_MODE || !transcriptText.trim()) {
-    return 'Meeting in progress. Key topics discussed include project timelines, resource allocation, and infrastructure improvements. Several action items have been identified and assigned.';
+  if (!openai || !transcriptText.trim()) {
+    return '';
   }
 
   try {

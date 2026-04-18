@@ -29,6 +29,29 @@ const PORT = process.env.BACKEND_PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Middleware for raw binary audio chunks
+app.use('/audio', express.raw({ type: 'application/octet-stream', limit: '10mb' }));
+
+app.post('/audio', async (req, res) => {
+  if (pipeline.isRunning) {
+    pipeline.handleAudioChunk(req.body);
+  }
+  res.send({ success: true });
+});
+
+app.post('/transcript', (req, res) => {
+  try {
+    const { text } = req.body;
+    if (pipeline.isRunning && text) {
+      pipeline.handleTranscript(text);
+    }
+    res.send({ success: true });
+  } catch (err) {
+    console.error('[Backend] Transcript error:', err);
+    res.status(500).send({ error: 'failed' });
+  }
+});
+
 // ── In-memory state (fallback when DB is unavailable) ─────────────────────────
 let activeMeetingId = null;
 let inMemoryTasks   = [];
@@ -64,6 +87,10 @@ pipeline.on('task', async (data) => {
   }
 });
 pipeline.on('summary', (data) => broadcast('summary', data));
+pipeline.on('error', (err) => {
+  console.error('[Pipeline Error]:', err.message);
+  broadcast('error', { message: err.message });
+});
 
 // ── SSE endpoint ──────────────────────────────────────────────────────────────
 app.get('/events', (req, res) => {
@@ -109,7 +136,11 @@ app.post('/recording/stop', async (req, res) => {
     } catch (_) {}
   }
 
-  res.json({ ok: true, transcript: result.transcript, summary: result.summary });
+  res.json({ 
+    ok: true, 
+    transcript: result?.transcript || inMemoryTranscript.trim(), 
+    summary: result?.summary || '' 
+  });
   activeMeetingId = null;
 });
 
