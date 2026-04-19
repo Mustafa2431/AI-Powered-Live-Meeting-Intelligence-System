@@ -32,7 +32,19 @@ const MeetingSchema = new mongoose.Schema({
   status:        { type: String, enum: ['active', 'completed'], default: 'active' },
 });
 
+/**
+ * Auto-heal hook: runs on every document load.
+ * If a legacy document has summary stored as a plain string (e.g. ""),
+ * convert it to a proper object so Mongoose doesn't crash applying defaults.
+ */
+MeetingSchema.post('init', function (doc) {
+  if (typeof doc._doc.summary === 'string') {
+    doc._doc.summary = { overview: doc._doc.summary };
+  }
+});
+
 const Meeting = mongoose.model('Meeting', MeetingSchema);
 const Task    = mongoose.model('Task', TaskSchema);
 
 module.exports = { Meeting, Task };
+
