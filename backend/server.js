@@ -191,10 +191,14 @@ app.post('/api/summary/:id', async (req, res) => {
     // Let's rely upon the actual pipeline events for timeline if available, but for now we map to fake intervals
     const timeline = buildTimeline(transcriptLines);
 
-    // Build Highlights
-    // Assuming image labels happen on the screenshots array but it only contains paths? 
-    // Usually images are just paths, but since we map to buildHighlights, we use an empty array if labels aren't stored natively on meeting record.
-    const highlights = []; // We aren't storing labels directly on screenshots yet.
+    // Build Visual Highlights from persisted image analysis descriptions
+    // Backward compatible: old meetings without imageDescriptions get empty array
+    // Limited to last 5 to prevent LLM prompt overload
+    const highlights = (meeting.imageDescriptions || [])
+      .slice(-5)
+      .map(img => `${new Date(img.timestamp).toLocaleTimeString()} → ${img.description}`)
+      .filter(Boolean);
+
 
     const reqData = {
       transcript: cleanedTranscript,
@@ -268,23 +272,48 @@ app.patch('/tasks/:id', async (req, res) => {
 // ── Screenshots ───────────────────────────────────────────────────────────────
 app.post('/screenshots', async (req, res) => {
   const { filePath } = req.body;
-  if (activeMeetingId && filePath) {
-    try {
-      await Meeting.findByIdAndUpdate(activeMeetingId, { $push: { screenshots: filePath } });
-    } catch (_) {}
-  }
 
-  // Analyze the screenshot and inject visual context into pipeline (always, not gated on isRunning)
+  // Analyze the screenshot first — persist path + description together
   if (filePath) {
     analyzeImage(filePath)
-      .then((description) => {
+      .then(async (description) => {
+        // Always inject into pipeline for live rolling summary
         if (description) pipeline.addImageContext(description);
+
+        // Persist to DB when a meeting is active
+        if (activeMeetingId) {
+          try {
+            // Enforce 20-entry cap: remove oldest before pushing if at limit
+            const meeting = await Meeting.findById(activeMeetingId).select('imageDescriptions');
+            if (meeting && meeting.imageDescriptions.length >= 20) {
+              await Meeting.findByIdAndUpdate(activeMeetingId, {
+                $pop: { imageDescriptions: -1 },  // removes first (oldest)
+              });
+            }
+            // Push both screenshot path and its Groq description
+            await Meeting.findByIdAndUpdate(activeMeetingId, {
+              $push: {
+                screenshots: filePath,
+                ...(description && {
+                  imageDescriptions: {
+                    filePath,
+                    description,
+                    timestamp: new Date(),
+                  },
+                }),
+              },
+            });
+          } catch (err) {
+            console.error('[Server] Failed to save imageDescription:', err.message);
+          }
+        }
       })
       .catch((err) => console.error('[Server] Image analysis failed:', err.message));
   }
 
   res.json({ ok: true });
 });
+
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));

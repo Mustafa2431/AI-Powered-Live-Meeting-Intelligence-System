@@ -81,8 +81,10 @@ ${JSON.stringify(followUps)}
 Open Questions:
 ${JSON.stringify(openQuestions)}
 
-Visual Highlights:
-${highlights.map(h => `- ${h}`).join('\n') || 'None'}
+Visual Context (Screenshots with AI descriptions):
+${highlights.map((h, i) => `[Screen ${i+1}] ${h}`).join('\n') || 'None — no screenshots taken'}
+
+Use these screen descriptions to enrich the summary with UI, slide, or document insights.
 
 Timeline:
 ${JSON.stringify(timeline)}

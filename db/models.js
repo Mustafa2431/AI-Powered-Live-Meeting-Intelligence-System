@@ -27,19 +27,24 @@ const MeetingSchema = new mongoose.Schema({
   },
   tasks:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'Task' }],
   screenshots:   [{ type: String }],
+  imageDescriptions: [{
+    filePath:    { type: String },
+    description: { type: String },
+    timestamp:   { type: Date, default: Date.now },
+  }],
   openQuestions: [{ question: String, timestamp: String }],
   followUps:     [{ suggestion: String, context: String, timestamp: String }],
   status:        { type: String, enum: ['active', 'completed'], default: 'active' },
 });
 
 /**
- * Auto-heal hook: runs on every document load.
+ * Auto-heal hook: runs on raw DB document BEFORE Mongoose instantiation.
  * If a legacy document has summary stored as a plain string (e.g. ""),
- * convert it to a proper object so Mongoose doesn't crash applying defaults.
+ * convert it to a proper object so Mongoose applyDefaults doesn't crash.
  */
-MeetingSchema.post('init', function (doc) {
-  if (typeof doc._doc.summary === 'string') {
-    doc._doc.summary = { overview: doc._doc.summary };
+MeetingSchema.pre('init', function (obj) {
+  if (typeof obj.summary === 'string') {
+    obj.summary = { overview: obj.summary };
   }
 });
 

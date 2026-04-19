@@ -430,19 +430,40 @@ export default function MeetingSummary({ meetings, openQuestions = [], followUps
               </div>
             )}
 
-            {/* Screenshot Gallery */}
-            {meeting.screenshots?.length > 0 && (
-              <div style={{ marginTop: 24 }}>
+            {/* Screen Captures — always shown, backward compatible */}
+            {(meeting.imageDescriptions || []).length > 0 && (
+              <section style={{ marginTop: 24 }}>
                 <h4 style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em',
-                  color: 'var(--on-surface-variant)', fontWeight: 600, marginBottom: 12 }}>Captured Screenshots</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-                  {meeting.screenshots.map((s, i) => (
-                    <div key={i} style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                      <img src={`file:///${s.replace(/\\/g, '/')}`} alt={`Captured ${i}`} style={{ width: '100%', height: 'auto', display: 'block' }} />
+                  color: 'var(--on-surface-variant)', fontWeight: 600, marginBottom: 12 }}>📸 Screen Captures</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {(meeting.imageDescriptions || []).map((img, i) => (
+                    <div key={i} style={{
+                      display: 'flex', gap: 16, padding: 16,
+                      background: 'rgba(59,130,246,0.06)',
+                      border: '1px solid rgba(59,130,246,0.2)',
+                      borderRadius: 14
+                    }}>
+                      {/* Thumbnail */}
+                      <img
+                        src={`file:///${img.filePath.replace(/\\/g, '/')}`}
+                        alt={`Screen ${i + 1}`}
+                        style={{ width: 140, height: 88, objectFit: 'cover',
+                          borderRadius: 8, flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}
+                        onError={e => { e.target.style.display = 'none'; }}
+                      />
+                      {/* Caption */}
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 11, color: 'var(--on-surface-variant)', marginBottom: 6 }}>
+                          ⏱ {new Date(img.timestamp).toLocaleTimeString()}
+                        </p>
+                        <p style={{ fontSize: 13, color: 'var(--on-surface)', lineHeight: 1.6 }}>
+                          📝 {img.description}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
 
             {/* Transcript (Collapsible) */}
