@@ -58,7 +58,9 @@ async function generateSummary(transcriptText, imageContexts = []) {
  * Generates a structured JSON summary on demand.
  */
 async function generateStructuredSummary(data) {
-  const { transcript = '', topics = [], tasks = [], decisions = [], highlights = [], openQuestions = [], timeline = [], followUps = [] } = data;
+  const { topics = [], tasks = [], decisions = [], highlights = [], openQuestions = [], timeline = [], followUps = [] } = data;
+  // Truncate transcript to last 4000 chars to avoid Groq token overflow / broken JSON
+  const transcript = (data.transcript || '').slice(-4000);
 
   const userContent = `DATA:
 Transcript:
@@ -79,8 +81,10 @@ ${JSON.stringify(followUps)}
 Open Questions:
 ${JSON.stringify(openQuestions)}
 
-Visual Highlights:
-${highlights.map(h => `- ${h}`).join('\n') || 'None'}
+Visual Context (Screenshots with AI descriptions):
+${highlights.map((h, i) => `[Screen ${i+1}] ${h}`).join('\n') || 'None — no screenshots taken'}
+
+Use these screen descriptions to enrich the summary with UI, slide, or document insights.
 
 Timeline:
 ${JSON.stringify(timeline)}
@@ -133,18 +137,7 @@ IMPORTANT:
 
     const raw = response.choices[0]?.message?.content || '';
     const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) {
-        return {
-          overview: "Summary not available",
-          topics: [],
-          decisions: [],
-          tasks: [],
-          followUps: [],
-          openQuestions: [],
-          highlights: [],
-          timeline: []
-        };
-    }
+    if (!match) throw new Error('LLM returned no valid JSON block. Raw: ' + raw.slice(0, 200));
     
     return JSON.parse(match[0]);
   } catch (err) {
