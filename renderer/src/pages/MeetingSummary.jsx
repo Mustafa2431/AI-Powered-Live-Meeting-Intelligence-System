@@ -191,21 +191,109 @@ export default function MeetingSummary({ meetings, openQuestions = [], followUps
                   </ul>
                 )}
 
-                {/* Action Items */}
-                {currentSummary.tasks?.length > 0 && sectionCard('rgba(20,184,166,0.1)', 'rgba(20,184,166,0.2)', 'task_alt', 'Action Items',
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                   {currentSummary.tasks.map((t, i) => (
-                     <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 14px',
-                       background: 'rgba(20,184,166,0.05)', borderRadius: 10 }}>
-                       <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#14b8a6', marginTop: 2 }}>check_circle</span>
-                       <div>
-                         <p style={{ fontSize: 13, color: 'var(--on-surface)' }}>{t.task || t}</p>
-                         {t.assignee && t.assignee.toLowerCase() !== 'unassigned' && <p style={{ fontSize: 11, color: 'var(--on-surface-variant)', marginTop: 2 }}>→ {t.assignee}</p>}
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-                )}
+                {/* ── Assigned Tasks (always shown from real-time detection) ───────── */}
+                {(() => {
+                  // Merge AI tasks + raw detected tasks, deduplicated by task text
+                  const rawTasks = meeting.tasks || [];
+                  const aiTasks  = currentSummary.tasks || [];
+
+                  // Build combined list: raw detected tasks first (they have status/confidence)
+                  // then any AI-only tasks not already in raw list
+                  const rawTexts = new Set(rawTasks.map(t => (t.task||'').toLowerCase().slice(0,40)));
+                  const aiExtras = aiTasks.filter(t => !rawTexts.has((t.task||'').toLowerCase().slice(0,40)));
+                  const allTasks = [...rawTasks, ...aiExtras];
+
+                  if (!allTasks.length) return null;
+
+                  const statusColor = { pending: '#f59e0b', 'in-progress': '#3b82f6', done: '#10b981' };
+                  const statusIcon  = { pending: 'schedule', 'in-progress': 'autorenew', done: 'check_circle' };
+
+                  return sectionCard('rgba(20,184,166,0.1)', 'rgba(20,184,166,0.2)', 'task_alt',
+                    `Assigned Tasks (${allTasks.length})`,
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {allTasks.map((t, i) => {
+                        const isRaw     = i < rawTasks.length;
+                        const assignee  = t.assignee || 'Unassigned';
+                        const hasOwner  = assignee.toLowerCase() !== 'unassigned';
+                        const status    = t.status || 'pending';
+                        const conf      = t.confidence != null ? Math.round(t.confidence * 100) : null;
+
+                        return (
+                          <div key={i} style={{
+                            display: 'flex', gap: 12, padding: '12px 14px',
+                            background: 'rgba(20,184,166,0.06)', borderRadius: 12,
+                            border: '1px solid rgba(20,184,166,0.15)',
+                            alignItems: 'flex-start'
+                          }}>
+                            {/* Status icon */}
+                            <span className="material-symbols-outlined" style={{
+                              fontSize: 18, color: statusColor[status] || '#14b8a6', marginTop: 1, flexShrink: 0
+                            }}>{statusIcon[status] || 'task_alt'}</span>
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              {/* Task text */}
+                              <p style={{ fontSize: 13, color: 'var(--on-surface)', lineHeight: 1.5, marginBottom: 6 }}>
+                                {t.task || t}
+                              </p>
+
+                              {/* Assignee pill + status badge + confidence */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                {/* Assignee */}
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  background: hasOwner ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.06)',
+                                  border: `1px solid ${hasOwner ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                                  borderRadius: 20, padding: '2px 10px', fontSize: 11,
+                                  color: hasOwner ? '#a5b4fc' : 'var(--on-surface-variant)',
+                                  fontWeight: 500
+                                }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize: 12 }}>person</span>
+                                  {assignee}
+                                </span>
+
+                                {/* Status badge (only on real detected tasks) */}
+                                {isRaw && (
+                                  <span style={{
+                                    background: `${statusColor[status]}22`,
+                                    border: `1px solid ${statusColor[status]}66`,
+                                    color: statusColor[status],
+                                    borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 600,
+                                    textTransform: 'uppercase', letterSpacing: '0.04em'
+                                  }}>{status}</span>
+                                )}
+
+                                {/* Confidence bar (only on real detected tasks with confidence) */}
+                                {isRaw && conf !== null && (
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10,
+                                    color: 'var(--on-surface-variant)' }}>
+                                    <div style={{
+                                      width: 40, height: 4, borderRadius: 4,
+                                      background: 'rgba(255,255,255,0.08)', overflow: 'hidden'
+                                    }}>
+                                      <div style={{
+                                        width: `${conf}%`, height: '100%', borderRadius: 4,
+                                        background: conf > 70 ? '#10b981' : conf > 40 ? '#f59e0b' : '#ef4444'
+                                      }} />
+                                    </div>
+                                    {conf}%
+                                  </span>
+                                )}
+
+                                {/* AI-only label */}
+                                {!isRaw && (
+                                  <span style={{ fontSize: 10, color: 'var(--on-surface-variant)',
+                                    background: 'rgba(255,255,255,0.04)', borderRadius: 20,
+                                    padding: '2px 8px', border: '1px solid rgba(255,255,255,0.08)'
+                                  }}>AI detected</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {/* Visual Highlights */}
                 {currentSummary.highlights?.length > 0 && sectionCard('rgba(59,130,246,0.1)', 'rgba(59,130,246,0.2)', 'image', 'Visual Highlights',
@@ -241,9 +329,68 @@ export default function MeetingSummary({ meetings, openQuestions = [], followUps
                 )}
               </>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 12, marginBottom: 20 }}>
-                <p style={{ color: 'var(--on-surface-variant)', fontSize: 14 }}>Click "Generate Summary" to run AI analysis.</p>
-              </div>
+              <>
+                <div style={{ textAlign: 'center', padding: '32px 0', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 12, marginBottom: 20 }}>
+                  <p style={{ color: 'var(--on-surface-variant)', fontSize: 14 }}>Click "Generate Summary" to run AI analysis.</p>
+                </div>
+
+                {/* Show detected tasks even without a generated summary */}
+                {meeting.tasks?.length > 0 && (() => {
+                  const statusColor = { pending: '#f59e0b', 'in-progress': '#3b82f6', done: '#10b981' };
+                  const statusIcon  = { pending: 'schedule', 'in-progress': 'autorenew', done: 'check_circle' };
+                  return sectionCard('rgba(20,184,166,0.1)', 'rgba(20,184,166,0.2)', 'task_alt',
+                    `Detected Tasks (${meeting.tasks.length})`,
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {meeting.tasks.map((t, i) => {
+                        const assignee = t.assignee || 'Unassigned';
+                        const hasOwner = assignee.toLowerCase() !== 'unassigned';
+                        const status   = t.status || 'pending';
+                        const conf     = t.confidence != null ? Math.round(t.confidence * 100) : null;
+                        return (
+                          <div key={i} style={{
+                            display: 'flex', gap: 12, padding: '12px 14px',
+                            background: 'rgba(20,184,166,0.06)', borderRadius: 12,
+                            border: '1px solid rgba(20,184,166,0.15)', alignItems: 'flex-start'
+                          }}>
+                            <span className="material-symbols-outlined" style={{
+                              fontSize: 18, color: statusColor[status] || '#14b8a6', marginTop: 1, flexShrink: 0
+                            }}>{statusIcon[status] || 'task_alt'}</span>
+                            <div style={{ flex: 1 }}>
+                              <p style={{ fontSize: 13, color: 'var(--on-surface)', lineHeight: 1.5, marginBottom: 6 }}>{t.task}</p>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  background: hasOwner ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.06)',
+                                  border: `1px solid ${hasOwner ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                                  borderRadius: 20, padding: '2px 10px', fontSize: 11,
+                                  color: hasOwner ? '#a5b4fc' : 'var(--on-surface-variant)', fontWeight: 500
+                                }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize: 12 }}>person</span>
+                                  {assignee}
+                                </span>
+                                <span style={{
+                                  background: `${statusColor[status]}22`, border: `1px solid ${statusColor[status]}66`,
+                                  color: statusColor[status], borderRadius: 20, padding: '2px 8px',
+                                  fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em'
+                                }}>{status}</span>
+                                {conf !== null && (
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--on-surface-variant)' }}>
+                                    <div style={{ width: 40, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                      <div style={{ width: `${conf}%`, height: '100%', borderRadius: 4,
+                                        background: conf > 70 ? '#10b981' : conf > 40 ? '#f59e0b' : '#ef4444' }} />
+                                    </div>
+                                    {conf}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </>
             )}
 
             {/* Live Session Open Questions (fallback before summary is generated) */}
@@ -280,26 +427,6 @@ export default function MeetingSummary({ meetings, openQuestions = [], followUps
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* Action Items (Live fallback) */}
-            {!currentSummary?.overview && meeting.tasks?.length > 0 && (
-              <div style={{ marginTop: 24 }}>
-                <h4 style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em',
-                  color: 'var(--secondary-dim)', fontWeight: 600, marginBottom: 12 }}>Live Action Items</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {meeting.tasks.map((t, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 14px',
-                      background: 'var(--surface-container)', borderRadius: 10 }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--secondary-dim)', marginTop: 2 }}>task_alt</span>
-                      <div>
-                        <p style={{ fontSize: 13, color: 'var(--on-surface)' }}>{t.task || t}</p>
-                        {t.assignee && t.assignee.toLowerCase() !== 'unassigned' && <p style={{ fontSize: 11, color: 'var(--secondary-dim)', marginTop: 2 }}>→ {t.assignee}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
 
