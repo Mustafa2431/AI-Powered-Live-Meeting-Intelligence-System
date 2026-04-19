@@ -15,6 +15,26 @@
 
 ---
 
+## 📸 Screenshots
+
+<div align="center">
+  <img src="docs/assets/screenshot_1.png" alt="Live Meeting Intelligence" width="800" />
+  <br />
+  <br />
+  <img src="docs/assets/screenshot_2.png" alt="Settings Configuration" width="800" />
+  <br />
+  <br />
+  <img src="docs/assets/screenshot_3.png" alt="Summaries Dashboard" width="800" />
+  <br />
+  <br />
+  <img src="docs/assets/screenshot_4.png" alt="Screen Monitoring Overlay" width="800" />
+  <br />
+  <br />
+  <img src="docs/assets/screenshot_5.png" alt="Dashboard Overview" width="800" />
+</div>
+
+---
+
 ## 🚀 Key Features
 
 ### 🎙️ Real-Time Audio Transcription & Intelligence
