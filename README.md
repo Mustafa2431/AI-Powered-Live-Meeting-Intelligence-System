@@ -86,7 +86,7 @@ Did someone mention, *"Let's follow up on this next Wednesday at 3 PM"*?
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/Observer-AI.git
+git clone https://github.com/Mustafa2431/AI-Powered-Live-Meeting-Intelligence-System.git
 cd Observer-AI
 ```
 
